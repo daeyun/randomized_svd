@@ -118,8 +118,8 @@ def adaptive_range(A, eps=1e-9):
 
 def compute_basis(A, k=None, iter=2):
     if k is None:
-        # disabled for now
         # Q = adaptive_range()
+        assert 0 # disabled for now
     else:
         omega = np.random.randn(A.shape[1], k)
         Y = A.dot(omega)
