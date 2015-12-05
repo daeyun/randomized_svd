@@ -86,7 +86,7 @@ def fast_2_norm(A):
     return la.norm(A.dot(v))
 
 
-def adaptive_range(A, eps=1e-9):
+def adaptive_range(A, eps=1e-6):
     # Also mostly from homework
     N = A.shape[0]
 
@@ -101,31 +101,39 @@ def adaptive_range(A, eps=1e-9):
 
     iter = 0
     while True:
-        # Probably possible to just do a few additional rounds of Gram–Schmidt here
-        # instead of computing Q from scratch.
-        if iter==0:
-            Q, _ = la.qr(Y, mode='economic')  # O(N(k+p)^2)
-        else:
-            Q, _ = la.lu(Y, permute_l=True)
-        iter += 1
+        Q, _ = la.qr(Y, mode='economic')
 
         E = (np.eye(Q.shape[0]) - Q.dot(Q.T)).dot(A)
         err = fast_2_norm(E)  # O(N)
+        print(err)
+
         if err <= eps:
             return Q
+
+        k = Y.shape[1]
         Y = np.concatenate((Y, A.dot(np.random.randn(N, p))), axis=1)
+
+        # TODO: Gram–Schmidt
+        # for i in range(k, Y.shape[1]):
+        #     P = 0
+        #     for j in range(i - 1):
+        #         P -= proj(Y[:, j], Y[:, i])
+        #     Y[:, i] = Y[:, i] + P
+        #     Y[:, i] /= la.norm(Y[:, i])
 
 
 def compute_basis(A, k=None, iter=2):
     if k is None:
-        # Q = adaptive_range()
-        assert 0 # disabled for now
+        Q = adaptive_range(A)
     else:
         omega = np.random.randn(A.shape[1], k)
         Y = A.dot(omega)
         Q, _ = nla.qr(Y)
 
-    for _ in range(iter):
+    for i in range(iter):
+        if i == 0:
+            Q, _ = la.qr(A.conj().T.dot(Q), mode='economic')
+            Q, _ = la.qr(A.dot(Q), mode='economic')
         Q, _ = la.lu(A.conj().T.dot(Q), permute_l=True)
         Q, _ = la.lu(A.dot(Q), permute_l=True)
 
@@ -139,6 +147,8 @@ def randomized_svd(A, k=10, compute_Q=True, iter=4):
         omega = np.random.randn(A.shape[1], k)
         Q = A.dot(omega)
 
+    k = Q.shape[1]
+
     J, P = ID_row(Q, k)
     W, R = nla.qr(A[J, :].T)
     U, sigma, VT = nla.svd(P.dot(R.T), full_matrices=False)
@@ -148,8 +158,8 @@ def randomized_svd(A, k=10, compute_Q=True, iter=4):
 
 
 def pca(A, k=10):
-    _, _, V = randomized_svd(A - A.mean(axis=0), k)
-    return V
+    _, _, V = randomized_svd(A - A.mean(axis=0), None)
+    return V[:,k]
 
 # Q = Q[:, :10]
 #
