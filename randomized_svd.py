@@ -131,11 +131,11 @@ def compute_basis(A, k=None, iter=2):
         Q, _ = nla.qr(Y)
 
     for i in range(iter):
-        if i == 0:
-            Q, _ = la.qr(A.conj().T.dot(Q), mode='economic')
-            Q, _ = la.qr(A.dot(Q), mode='economic')
         Q, _ = la.lu(A.conj().T.dot(Q), permute_l=True)
         Q, _ = la.lu(A.dot(Q), permute_l=True)
+
+    Q, _ = la.qr(A.conj().T.dot(Q), mode='economic')
+    Q, _ = la.qr(A.dot(Q), mode='economic')
 
     return Q
 
