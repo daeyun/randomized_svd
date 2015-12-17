@@ -180,6 +180,9 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
         else:
             raise RuntimeError('unknown method')
 
+    Q, _ = la.qr(A.conj().T.dot(Q), mode='economic')
+    Q, _ = la.qr(A.dot(Q), mode='economic')
+
     return Q
 
 
