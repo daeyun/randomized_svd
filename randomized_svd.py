@@ -29,7 +29,12 @@ def ID(A, k):
     """
     idx, proj = sli.interp_decomp(A, k)
     J = idx[:k]
-    P = np.hstack((np.eye(k), proj))[:, np.argsort(idx)]
+
+    kp = np.eye(k)
+    if len(proj):
+        kp = np.hstack((kp, proj))
+
+    P = kp[:, np.argsort(idx)]
     return J, P
 
 
@@ -52,31 +57,35 @@ def normalize_vector(v):
 
 
 def gram_schmidt(S, start_col=0):
-    A = S.copy()
+    """
+    Implementation of gram schmidt that assumes first start_col+1 columns are already orthogonal.
+    :return:
+    """
+    Q = S.copy()
     k = S.shape[1]
     assert k > 1 and start_col >= 0
     start_col = min(S.shape[1], start_col)
-    if A.dtype != np.float32 and A.dtype != np.float64:
-        A = A.astype(np.float64)
+    if Q.dtype != np.float32 and Q.dtype != np.float64:
+        Q = Q.astype(np.float64)
 
     if start_col == 0:
-        A[:, 0] = normalize_vector(A[:, 0])
+        Q[:, 0] = normalize_vector(Q[:, 0])
 
     uu = []
     for i in range(start_col + 1, k):
-        A[:, i] = S[:, i]
+        Q[:, i] = S[:, i]
         for j in range(0, i):
-            u = A[:, j]
-            v = A[:, i]
+            u = Q[:, j]
+            v = Q[:, i]
             if len(uu) <= j:
                 uu.append(u.T.dot(u))
-            A[:, i] -= u * (u.T.dot(v) / uu[j])
+            Q[:, i] -= u * (u.T.dot(v) / uu[j])
 
-        A[:, i] = normalize_vector(A[:, i])
-        # Re-project A[:, i] to the orthogonal complement of A[:, :i] to make sure they stay orthogonal.
-        A[:, i] = A[:, i] - A[:, :i].dot(A[:, :i].T.dot(A[:, i]))
+        Q[:, i] = normalize_vector(Q[:, i])
+        # Re-project Q[:, i] to the orthogonal complement of Q[:, :i] to make sure they stay orthogonal.
+        Q[:, i] = Q[:, i] - Q[:, :i].dot(Q[:, :i].T.dot(Q[:, i]))
 
-    return A
+    return Q
 
 
 def lowrank(self, n=100, m=100):
@@ -105,11 +114,26 @@ def normalize_columns(A):
     return A / np.sqrt(np.power(A, 2).sum(axis=0))
 
 
-def check_orthogonal(Q):
-    return la.norm(np.eye(Q.shape[1]) - Q.T.dot(Q), 2)
+def randomized_range(A, rank, power_iter=2):
+    """
+    Uses fixed rank i.e. non-adaptive version.
+
+    :param rank: Approximate rank.
+    :param power_iter: Number of power iterations.
+    :return: Orthogonal basis Q. Low rank approximation of A.
+    """
+    Q = np.random.randn(A.shape[1], rank)
+
+    # Power iterations.
+    for i in range(power_iter):
+        Q, _ = la.lu(A.T.dot(A.dot(Q)), permute_l=True)
+    Q, _ = la.qr(A.dot(Q), mode='economic')
+
+    return Q
 
 
-def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2, power_iter_p=0, stabilize_qr_merging=True, max_p_iter=np.float('inf')):
+def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2, power_iter_p=0,
+                   stabilize_qr_merging=True, max_p_iter=np.float('inf')):
     if A.shape[0] < 10 or A.shape[1] < 10:
         Q, _ = la.qr(A, mode='economic')
         return Q
@@ -117,13 +141,13 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
     # Start with 50 columns by default.
     k = min(k, A.shape[1])
 
-    omega = np.random.randn(A.shape[1], k)
-    Q = A.dot(omega)  # N by k
+    Q = np.random.randn(A.shape[1], k)
 
     # Power iterations.
     for i in range(power_iter_k):
-        Q, _ = la.lu(A.dot(A.T.dot(Q)), permute_l=True)
-    Q, _ = la.qr(Q, mode='economic')
+        Q, _ = la.lu(A.T.dot(A.dot(Q)), permute_l=True)
+
+    Q, _ = la.qr(A.dot(Q), mode='economic')
 
     num_prev_errs = 8
     errs = collections.deque(maxlen=num_prev_errs)
@@ -180,25 +204,25 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
         else:
             raise RuntimeError('unknown method')
 
-    Q, _ = la.qr(A.conj().T.dot(Q), mode='economic')
-    Q, _ = la.qr(A.dot(Q), mode='economic')
-
     return Q
 
 
-def randomized_svd(A):
-    Q = adaptive_range(A)
+def randomized_svd(A, rank=None, power_iter=2, k=50, p=50):
+    if rank is None:
+        Q = adaptive_range(A, k=k, p=p, power_iter_k=power_iter)
+    else:
+        Q = randomized_range(A, rank, power_iter=power_iter)
 
     k = Q.shape[1]
 
     J, P = ID_row(Q, k)
-    W, R = nla.qr(A[J, :].T)
-    U, sigma, VT = nla.svd(P.dot(R.T), full_matrices=False)
-    V = W.dot(VT.T).T
+    W, R = la.qr(A[J, :].T, mode='economic')
+    U, sigma, VT = la.svd(P.dot(R.T), full_matrices=False)
+    V = VT.dot(W.T)
 
     return U, sigma, V
 
 
-def pca(A, k=10):
-    _, _, V = randomized_svd(A - A.mean(axis=0), None)
-    return V[:, k]
+def pca(A, num_components=10, svd_rank=None):
+    _, _, V = randomized_svd(A - A.mean(axis=0), svd_rank)
+    return V[:, num_components]
