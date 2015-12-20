@@ -3,12 +3,7 @@ from __future__ import division
 import numpy as np
 import scipy.linalg as la
 import scipy.linalg.interpolative as sli
-import matplotlib.pyplot as pt
-import scipy
 import time
-import numpy.linalg as nla
-import warnings
-import sys
 import collections
 
 
@@ -45,16 +40,6 @@ def ID_row(A, k):
     :return P: n by k
     """
     J, P = ID(A.T, k)
-    return J, P.T
-
-    idx, proj = sli.interp_decomp(A.T, k)
-    J = idx[:k]
-
-    kp = np.eye(k)
-    if len(proj):
-        kp = np.hstack((kp, proj))
-
-    P = kp[:, np.argsort(idx)]
     return J, P.T
 
 
@@ -194,7 +179,7 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
 
         if (eps is not None and err <= eps) or Q.shape[1] >= A.shape[1] or round > max_p_iter:
             break
-        elif eps is None and len(errs) > 3 and np.std(errs) > 1e4 * np.std(list(errs)[-3:]) and err < 0.1:
+        elif eps is None and len(errs) > 3 and np.std(errs) > 1e3 * np.std(list(errs)[-3:]) and err < 0.1:
             # Terminate if convergence is detected.
             ind = min((err, idx) for idx, err in enumerate(errs))[1]
             Q = Q[:, :sizes[ind]]
@@ -236,12 +221,13 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
     return Q
 
 
-def randomized_svd(A, rank=None, power_iter=2, k=50, p=50, block_krylov=False, l=0, use_id=False):
+def randomized_svd(A, rank=None, power_iter=2, k=50, p=50, block_krylov=True, l=0, use_id=False):
     """
     :param rank: If None, adaptive range finder is used to detect the rank.
     :param power_iter: Number of power iterations.
     :param k: Initial estimate of rank, if adaptive range finder is used.
     :param p: Batch size in the incremental steps of adaptive range finder.
+    :param l: Number of overestimated columns in computing Q.
     """
     if rank is None:
         Q = adaptive_range(A, k=k, p=p, power_iter_k=power_iter)
@@ -249,7 +235,6 @@ def randomized_svd(A, rank=None, power_iter=2, k=50, p=50, block_krylov=False, l
         Q = randomized_range(A, rank, power_iter=power_iter, block_krylov=block_krylov, l=l)
 
     if rank is None:
-        assert not block_krylov
         rank = Q.shape[1]
 
     if use_id:

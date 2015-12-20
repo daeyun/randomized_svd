@@ -45,17 +45,17 @@ class TestRandomizedSvd(unittest.TestCase):
 
     def test_adaptive_range_low_rank_3(self):
         A = np.random.randn(1400, 500).dot(np.random.randn(500, 1400))
-        Q = randomized_svd.adaptive_range(A, 1e-6)
+        Q = randomized_svd.adaptive_range(A, 1e-9)
         self.assertEqual(Q.shape[1], 500)
 
     def test_adaptive_range_low_rank_4(self):
         A = np.random.randn(1400, 550).dot(np.random.randn(550, 1400))
-        Q = randomized_svd.adaptive_range(A, 1e-6)
+        Q = randomized_svd.adaptive_range(A, 1e-9)
         self.assertEqual(Q.shape[1], 550)
 
     def test_adaptive_range_low_rank_5(self):
         A = np.random.randn(200, 150).dot(np.random.randn(150, 200))
-        Q = randomized_svd.adaptive_range(A, 1e-6, method='modified_gram_schmidt')
+        Q = randomized_svd.adaptive_range(A, 1e-9, method='modified_gram_schmidt')
         self.assertEqual(Q.shape[1], 150)
 
     def test_adaptive_range_nonsquare_horz(self):
@@ -177,10 +177,6 @@ class TestRandomizedSvd(unittest.TestCase):
         self.assertEqual(U.shape[0], 50)
         self.assertEqual(Vh.shape[1], 50)
 
-    def test_svd_full_rank2(self):
-        import fbpca
+    def test_run_pca(self):
         A = np.random.randn(10000, 700)
-        # U, s, Vh = randomized_svd.randomized_svd(A)
-        fbpca.pca(A, raw=True)
-        # self.assertEqual(U.shape[0], 50)
-        # self.assertEqual(Vh.shape[1], 50)
+        randomized_svd.pca(A, 10)
