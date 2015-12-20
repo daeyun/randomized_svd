@@ -132,7 +132,7 @@ def randomized_range(A, rank, power_iter=2, block_krylov=False, l=0):
     :param power_iter: Number of power iterations.
     :return: Orthogonal basis Q. Low rank approximation of A.
     """
-    
+
     Q = np.random.randn(A.shape[1], rank + l)
     K = Q = A.dot(Q)
 
@@ -144,13 +144,8 @@ def randomized_range(A, rank, power_iter=2, block_krylov=False, l=0):
     Q, _ = la.qr(K, mode='economic')
     Q = Q[:, :(rank + l) * (power_iter + 1)]
 
-
-
-
-    # Power iterations.
     if block_krylov:
         K = Q
-
         for i in range(power_iter):
             Q, _ = la.lu(Q, permute_l=True)
             Q, _ = la.lu(A.T.dot(Q), permute_l=True)
@@ -159,6 +154,7 @@ def randomized_range(A, rank, power_iter=2, block_krylov=False, l=0):
         Q, _ = la.qr(K, mode='economic')
         Q = Q[:, :(rank + l) * (power_iter + 1)]
     else:
+        # Power iterations.
         for i in range(power_iter):
             Q, _ = la.lu(Q, permute_l=True)
             Q, _ = la.lu(A.T.dot(Q), permute_l=True)
@@ -233,7 +229,7 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
     return Q
 
 
-def randomized_svd(A, rank=None, power_iter=2, k=50, p=50, block_krylov=True, l=0, use_id=False):
+def randomized_svd(A, rank=None, power_iter=2, k=50, p=50, block_krylov=False, l=0, use_id=False):
     """
     :param rank: If None, adaptive range finder is used to detect the rank.
     :param power_iter: Number of power iterations.
@@ -245,8 +241,9 @@ def randomized_svd(A, rank=None, power_iter=2, k=50, p=50, block_krylov=True, l=
     else:
         Q = randomized_range(A, rank, power_iter=power_iter, block_krylov=block_krylov, l=l)
 
-    k = Q.shape[1]
-    rank = k
+    if rank is None:
+        assert not block_krylov
+        rank = Q.shape[1]
 
     if use_id:
         J, P = ID_row(Q, rank)
