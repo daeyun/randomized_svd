@@ -129,7 +129,7 @@ class TestRandomizedSvd(unittest.TestCase):
     def test_less_accurate_than_full_svd(self):
         A = lowrank(100, 100)
 
-        U, s, Vh = randomized_svd.randomized_svd(A, 20)
+        U, s, Vh = randomized_svd.randomized_svd(A, 10)
         S = la.diagsvd(s, U.shape[1], U.shape[1])
         randomized_err = la.norm(U.dot(S).dot(Vh) - A, 2)
 
@@ -157,7 +157,7 @@ class TestRandomizedSvd(unittest.TestCase):
         fast = timeit.timeit("randomized_svd(randn(800, 5).dot(randn(5, 800)), None, k=2, p=2)",
                              ("from randomized_svd import randomized_svd;"
                               "from numpy.random import randn"), number=n)
-        self.assertLess(fast, full /2.0)
+        self.assertLess(fast, full / 2.0)
 
     def test_adaptive_range_small_error(self):
         A = lowrank(100, 100)
@@ -176,3 +176,11 @@ class TestRandomizedSvd(unittest.TestCase):
         U, s, Vh = randomized_svd.randomized_svd(A)
         self.assertEqual(U.shape[0], 50)
         self.assertEqual(Vh.shape[1], 50)
+
+    def test_svd_full_rank2(self):
+        import fbpca
+        A = np.random.randn(10000, 700)
+        # U, s, Vh = randomized_svd.randomized_svd(A)
+        fbpca.pca(A, raw=True)
+        # self.assertEqual(U.shape[0], 50)
+        # self.assertEqual(Vh.shape[1], 50)

@@ -47,6 +47,16 @@ def ID_row(A, k):
     J, P = ID(A.T, k)
     return J, P.T
 
+    idx, proj = sli.interp_decomp(A.T, k)
+    J = idx[:k]
+
+    kp = np.eye(k)
+    if len(proj):
+        kp = np.hstack((kp, proj))
+
+    P = kp[:, np.argsort(idx)]
+    return J, P.T
+
 
 def proj(u, v):
     return u * (u.T.dot(v) / u.T.dot(u))
@@ -114,7 +124,7 @@ def normalize_columns(A):
     return A / np.sqrt(np.power(A, 2).sum(axis=0))
 
 
-def randomized_range(A, rank, power_iter=2):
+def randomized_range(A, rank, power_iter=2, block_krylov=False, l=0):
     """
     Uses fixed rank i.e. non-adaptive version.
 
@@ -122,13 +132,39 @@ def randomized_range(A, rank, power_iter=2):
     :param power_iter: Number of power iterations.
     :return: Orthogonal basis Q. Low rank approximation of A.
     """
-    Q = np.random.randn(A.shape[1], rank)
+    
+    Q = np.random.randn(A.shape[1], rank + l)
+    K = Q = A.dot(Q)
+
+    for i in range(power_iter):
+        Q, _ = la.lu(Q, permute_l=True)
+        Q, _ = la.lu(A.T.dot(Q), permute_l=True)
+        Q = A.dot(Q)
+        K = np.hstack((K, Q))
+    Q, _ = la.qr(K, mode='economic')
+    Q = Q[:, :(rank + l) * (power_iter + 1)]
+
+
+
 
     # Power iterations.
-    for i in range(power_iter):
-        Q, _ = la.lu(A.T.dot(A.dot(Q)), permute_l=True)
-    Q, _ = la.qr(A.dot(Q), mode='economic')
+    if block_krylov:
+        K = Q
 
+        for i in range(power_iter):
+            Q, _ = la.lu(Q, permute_l=True)
+            Q, _ = la.lu(A.T.dot(Q), permute_l=True)
+            Q = A.dot(Q)
+            K = np.hstack((K, Q))
+        Q, _ = la.qr(K, mode='economic')
+        Q = Q[:, :(rank + l) * (power_iter + 1)]
+    else:
+        for i in range(power_iter):
+            Q, _ = la.lu(Q, permute_l=True)
+            Q, _ = la.lu(A.T.dot(Q), permute_l=True)
+            Q = A.dot(Q)
+        Q, _ = la.qr(Q, mode='economic')
+        Q = Q[:, :rank + l]
     return Q
 
 
@@ -138,16 +174,7 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
         Q, _ = la.qr(A, mode='economic')
         return Q
 
-    # Start with 50 columns by default.
-    k = min(k, A.shape[1])
-
-    Q = np.random.randn(A.shape[1], k)
-
-    # Power iterations.
-    for i in range(power_iter_k):
-        Q, _ = la.lu(A.T.dot(A.dot(Q)), permute_l=True)
-
-    Q, _ = la.qr(A.dot(Q), mode='economic')
+    Q = randomized_range(A, rank=k, power_iter=power_iter_k)
 
     num_prev_errs = 8
     errs = collections.deque(maxlen=num_prev_errs)
@@ -174,7 +201,6 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
 
         Q_ = A.dot(np.random.randn(A.shape[1], ncols))
 
-        # For experiments. This doesn't seem to help much.
         for i in range(power_iter_p):
             Q_, _ = la.lu(A.dot(A.T.dot(Q_)), permute_l=True)
 
@@ -207,22 +233,42 @@ def adaptive_range(A, eps=1e-7, k=50, p=50, method='qr_merging', power_iter_k=2,
     return Q
 
 
-def randomized_svd(A, rank=None, power_iter=2, k=50, p=50):
+def randomized_svd(A, rank=None, power_iter=2, k=50, p=50, block_krylov=True, l=0, use_id=False):
+    """
+    :param rank: If None, adaptive range finder is used to detect the rank.
+    :param power_iter: Number of power iterations.
+    :param k: Initial estimate of rank, if adaptive range finder is used.
+    :param p: Batch size in the incremental steps of adaptive range finder.
+    """
     if rank is None:
         Q = adaptive_range(A, k=k, p=p, power_iter_k=power_iter)
     else:
-        Q = randomized_range(A, rank, power_iter=power_iter)
+        Q = randomized_range(A, rank, power_iter=power_iter, block_krylov=block_krylov, l=l)
 
     k = Q.shape[1]
+    rank = k
 
-    J, P = ID_row(Q, k)
-    W, R = la.qr(A[J, :].T, mode='economic')
-    U, sigma, VT = la.svd(P.dot(R.T), full_matrices=False)
-    V = VT.dot(W.T)
+    if use_id:
+        J, P = ID_row(Q, rank)
+        W, R = la.qr(A[J, :].T, mode='economic')
+        Q = P.dot(R.T)
+        U, sigma, VT = la.svd(Q, full_matrices=False)
+        V = VT.dot(W.T)
+        return U[:, :rank], sigma[:rank], V[:rank, :]
 
-    return U, sigma, V
+    M = Q.T.dot(A)
+    U, sigma, VT = la.svd(M, full_matrices=False)
+    U = Q.dot(U)
+    return U[:, :rank], sigma[:rank], VT[:rank, :]
 
 
 def pca(A, num_components=10, svd_rank=None):
-    _, _, V = randomized_svd(A - A.mean(axis=0), svd_rank)
-    return V[:, num_components]
+    """
+    :param num_components: Number of principal components.
+    :param svd_rank: If None, adaptive range finder is used.
+    :return: (n, num_num_components)
+    """
+    if svd_rank is not None:
+        assert num_components >= svd_rank
+    _, _, V = randomized_svd(A - A.mean(axis=0), rank=svd_rank)
+    return V[:, :num_components]
