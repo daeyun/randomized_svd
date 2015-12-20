@@ -107,6 +107,13 @@ def lowrank(self, n=100, m=100):
 
 def svd_err(svd_func, A=lowrank(100, 100), **kwargs):
     U, s, Vh = svd_func(A, **kwargs)
+
+    if 'rank' in kwargs:
+        rank = kwargs['rank']
+        assert U.shape[1] == rank
+        assert Vh.shape[0] == rank
+        assert s.shape[0] == rank
+
     err = la.norm((U * s).dot(Vh) - A, 2)
     return err
 
